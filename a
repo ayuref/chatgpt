@@ -1,0 +1,1153 @@
+-- ============================================
+--   AIMBOT + ESP v6.8 FINAL — LINORIA
+--   Wallshot + Triggerbot + All fixes
+-- ============================================
+
+local repo = "https://raw.githubusercontent.com/GhostDuckyy/UI-Libraries/main/LinoriaLib/"
+local Library = loadstring(game:HttpGet(repo .. "source.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+local RS  = game:GetService("RunService")
+local PS  = game:GetService("Players")
+local GS  = game:GetService("GuiService")
+local UIS = game:GetService("UserInputService")
+local CG  = game:GetService("CoreGui")
+local cam = workspace.CurrentCamera
+local lp  = PS.LocalPlayer
+local mse = lp:GetMouse()
+
+local V2    = Vector2.new
+local V3    = Vector3.new
+local CF    = CFrame.new
+local floor = math.floor
+local tan   = math.tan
+local rad   = math.rad
+local clamp = math.clamp
+local tick  = tick
+
+local giY = GS:GetGuiInset().Y
+local vsX, vsY, vsHX, vsHY
+local function updVS()
+    local v = cam.ViewportSize
+    vsX = v.X; vsY = v.Y; vsHX = vsX * 0.5; vsHY = vsY * 0.5
+end
+updVS()
+cam:GetPropertyChangedSignal("ViewportSize"):Connect(updVS)
+
+-- ============================================
+--    ACTIVATION KEY
+-- ============================================
+
+local keyNames = {
+    "None","LMB","RMB","MMB","MB4","MB5",
+    "Shift","Ctrl","Alt","Q","E","F","R",
+    "C","V","X","Z","CapsLock","Tab","Space"
+}
+
+local KD = {}
+KD["None"]     = nil
+KD["LMB"]      = {t="m", e=Enum.UserInputType.MouseButton1}
+KD["RMB"]      = {t="m", e=Enum.UserInputType.MouseButton2}
+KD["MMB"]      = {t="m", e=Enum.UserInputType.MouseButton3}
+KD["MB4"]      = {t="m", e=Enum.UserInputType.MouseButton1}
+KD["MB5"]      = {t="m", e=Enum.UserInputType.MouseButton2}
+KD["Shift"]    = {t="k", e=Enum.KeyCode.LeftShift}
+KD["Ctrl"]     = {t="k", e=Enum.KeyCode.LeftControl}
+KD["Alt"]      = {t="k", e=Enum.KeyCode.LeftAlt}
+KD["Q"]        = {t="k", e=Enum.KeyCode.Q}
+KD["E"]        = {t="k", e=Enum.KeyCode.E}
+KD["F"]        = {t="k", e=Enum.KeyCode.F}
+KD["R"]        = {t="k", e=Enum.KeyCode.R}
+KD["C"]        = {t="k", e=Enum.KeyCode.C}
+KD["V"]        = {t="k", e=Enum.KeyCode.V}
+KD["X"]        = {t="k", e=Enum.KeyCode.X}
+KD["Z"]        = {t="k", e=Enum.KeyCode.Z}
+KD["CapsLock"] = {t="k", e=Enum.KeyCode.CapsLock}
+KD["Tab"]      = {t="k", e=Enum.KeyCode.Tab}
+KD["Space"]    = {t="k", e=Enum.KeyCode.Space}
+
+local aimMode    = "Hold"
+local actInfo    = KD["LMB"]
+local actDown    = false
+local actToggled = false
+local wasDown    = false
+local sleepUntil = 0
+local prevRaw    = false
+
+local function mI(i)
+    if not actInfo then return false end
+    if actInfo.t == "m" then return i.UserInputType == actInfo.e end
+    return i.KeyCode == actInfo.e
+end
+
+UIS.InputBegan:Connect(function(i) if actInfo and mI(i) then actDown = true end end)
+UIS.InputEnded:Connect(function(i) if actInfo and mI(i) then actDown = false end end)
+
+-- ============================================
+--    CONFIG
+-- ============================================
+
+local cfg = {
+    AimOn = false, AimPart = "Head", FOV = 250, Smooth = 4,
+    Pred = 0, AimTeam = false, WC = true, UseActKey = true, Sleep = 0,
+    ShowFOV = true, FOVCol = Color3.fromRGB(255,255,255), FOVFill = false,
+    ShowAL = true, AimCol = Color3.fromRGB(255,0,0),
+
+    WallShot = false,
+
+    TBot = false, TBotDelay = 100, TBotBurst = 1,
+    TBotHoldTime = 50,
+
+    ESPOn = false, Box = false, B3D = false, Trc = false,
+    HP = false, Name = false, Dist = false, Look = false,
+    ESPTeam = false, MaxDist = 1000, TrcFrom = "Bottom",
+
+    BoxCol  = Color3.fromRGB(255,255,255),
+    B3DCol  = Color3.fromRGB(0,255,255),
+    TrcCol  = Color3.fromRGB(255,255,255),
+    InfoCol = Color3.fromRGB(255,255,255),
+    LookCol = Color3.fromRGB(255,255,0)
+}
+
+local anyFeat = false
+local dirty   = true
+local mx, my  = 0, 0
+
+local function rf()
+    anyFeat = cfg.Box or cfg.B3D or cfg.Trc
+        or cfg.HP or cfg.Name or cfg.Dist or cfg.Look
+end
+
+-- ============================================
+--    CHARACTER CACHE
+-- ============================================
+
+local CC = {}
+
+local function cacheC(p)
+    local old = CC[p]
+    if old and old.cn then
+        for _, c in pairs(old.cn) do c:Disconnect() end
+    end
+
+    local ch = p.Character
+    if not ch then CC[p] = nil; return end
+
+    local hrp = ch:FindFirstChild("HumanoidRootPart")
+    if not hrp then hrp = ch:WaitForChild("HumanoidRootPart", 5) end
+    if not hrp then CC[p] = nil; return end
+
+    local head = ch:FindFirstChild("Head")
+    if not head then head = ch:WaitForChild("Head", 3) end
+
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if not hum then hum = ch:WaitForChild("Humanoid", 3) end
+
+    local d = {
+        hrp = hrp, head = head, hum = hum,
+        nm = p.DisplayName, tm = p.Team,
+        alive = true, cn = {}, _valid = true
+    }
+
+    if d.hum then
+        d.cn[1] = d.hum.Died:Connect(function() d.alive = false end)
+    end
+    d.cn[2] = p:GetPropertyChangedSignal("Team"):Connect(function()
+        d.tm = p.Team
+    end)
+    d.cn[3] = ch.AncestryChanged:Connect(function()
+        d._valid = false
+    end)
+
+    CC[p] = d
+end
+
+local function initP(p)
+    if p == lp then return end
+    if p.Character then task.spawn(cacheC, p) end
+    p.CharacterAdded:Connect(function()
+        task.spawn(cacheC, p)
+    end)
+end
+
+for _, p in pairs(PS:GetPlayers()) do initP(p) end
+PS.PlayerAdded:Connect(initP)
+
+-- ============================================
+--    WALLSHOT SYSTEM
+-- ============================================
+
+local wsActive = false
+local wsParts  = {}
+local wsConn   = nil
+
+local function isPlayerPart(part)
+    local m = part:FindFirstAncestorOfClass("Model")
+    return m and PS:GetPlayerFromCharacter(m) ~= nil
+end
+
+local function wsSkip(part)
+    if not part:IsA("BasePart") then return true end
+    if part:IsA("Terrain") then return true end
+    if part.Name == "Baseplate" then return true end
+    if isPlayerPart(part) then return true end
+    local sz = part.Size
+    if sz.X < 1 and sz.Y < 1 and sz.Z < 1 then return true end
+    return false
+end
+
+local function wsEnable()
+    if wsActive then return end
+    wsActive = true
+    task.spawn(function()
+        local desc = workspace:GetDescendants()
+        local b = 0
+        for _, part in pairs(desc) do
+            if not wsActive then break end
+            if not wsSkip(part) and part.CanQuery then
+                wsParts[part] = true
+                part.CanQuery = false
+            end
+            b = b + 1
+            if b % 300 == 0 then task.wait() end
+        end
+    end)
+    wsConn = workspace.DescendantAdded:Connect(function(part)
+        if not wsActive then return end
+        task.defer(function()
+            if part and part.Parent and part:IsA("BasePart")
+                and not wsSkip(part) and part.CanQuery then
+                wsParts[part] = true
+                part.CanQuery = false
+            end
+        end)
+    end)
+end
+
+local function wsDisable()
+    if not wsActive then return end
+    wsActive = false
+    if wsConn then wsConn:Disconnect(); wsConn = nil end
+    task.spawn(function()
+        local b = 0
+        for part in pairs(wsParts) do
+            if part and part.Parent then part.CanQuery = true end
+            b = b + 1
+            if b % 300 == 0 then task.wait() end
+        end
+        wsParts = {}
+    end)
+end
+
+-- ============================================
+--    TRIGGERBOT SYSTEM
+-- ============================================
+
+local tbFiring     = false
+local tbLastFire   = 0
+local tbHasTarget  = false
+
+local function tbShoot()
+    if tbFiring then return end
+    local now = tick()
+    if (now - tbLastFire) * 1000 < cfg.TBotDelay then return end
+
+    tbFiring = true
+    tbLastFire = now
+
+    task.spawn(function()
+        for i = 1, cfg.TBotBurst do
+            if not cfg.TBot or not tbHasTarget then break end
+
+            local ok1, _ = pcall(mouse1press)
+            if ok1 then
+                task.wait(cfg.TBotHoldTime / 1000)
+                pcall(mouse1release)
+            end
+
+            if i < cfg.TBotBurst then
+                task.wait(0.03)
+            end
+        end
+        tbFiring = false
+    end)
+end
+
+-- ============================================
+--    RAYCASTS + CACHE VALIDATION (10Hz)
+-- ============================================
+
+local rayR = {}
+local rayP = RaycastParams.new()
+rayP.FilterType = Enum.RaycastFilterType.Exclude
+
+task.spawn(function()
+    while true do
+        for _, p in pairs(PS:GetPlayers()) do
+            if p ~= lp then
+                local d = CC[p]
+                local ch = p.Character
+
+                if not d and ch then
+                    task.spawn(cacheC, p)
+                elseif d and not d._valid then
+                    task.spawn(cacheC, p)
+                elseif d and d.hrp and d.hrp.Parent == nil then
+                    task.spawn(cacheC, p)
+                elseif d and not d.alive and ch then
+                    local hum = ch:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 then
+                        task.spawn(cacheC, p)
+                    end
+                elseif d and d.head and d.head.Parent == nil then
+                    if ch then
+                        local nh = ch:FindFirstChild("Head")
+                        if nh then d.head = nh end
+                    end
+                end
+            end
+        end
+
+        if cfg.WC and (cfg.AimOn or cfg.ESPOn) then
+            local mc = lp.Character
+            if mc then
+                rayP.FilterDescendantsInstances = {mc}
+                local o = cam.CFrame.Position
+                for p, d in pairs(CC) do
+                    if d.alive and d._valid then
+                        local pt = d.head or d.hrp
+                        if pt and pt.Parent then
+                            local r = workspace:Raycast(o, pt.Position - o, rayP)
+                            if r then
+                                local m = r.Instance:FindFirstAncestorOfClass("Model")
+                                rayR[p] = (m ~= nil) and (PS:GetPlayerFromCharacter(m) ~= nil)
+                            else
+                                rayR[p] = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        task.wait(0.1)
+    end
+end)
+
+-- ============================================
+--    3D BOX
+-- ============================================
+
+local BW, BH, BD = 2, 2.75, 1.25
+local b3off = {
+    CF(-BW,-BH,-BD), CF(BW,-BH,-BD),
+    CF(BW,BH,-BD),   CF(-BW,BH,-BD),
+    CF(-BW,-BH,BD),  CF(BW,-BH,BD),
+    CF(BW,BH,BD),    CF(-BW,BH,BD)
+}
+local b3e = {
+    {1,2},{2,3},{3,4},{4,1},
+    {5,6},{6,7},{7,8},{8,5},
+    {1,5},{2,6},{3,7},{4,8}
+}
+local scX = {0,0,0,0,0,0,0,0}
+local scY = {0,0,0,0,0,0,0,0}
+
+local function isE(d, tc)
+    if not tc then return true end
+    if not lp.Team then return true end
+    return d.tm ~= lp.Team
+end
+
+local function hpC(r)
+    return Color3.fromRGB(255*(1-r), 255*r, 0)
+end
+
+-- ============================================
+--    DRAWING
+-- ============================================
+
+local fovC, aimL, aimD
+
+pcall(function()
+    fovC = Drawing.new("Circle")
+    fovC.Thickness = 1.5; fovC.NumSides = 48
+    fovC.Visible = false; fovC.Transparency = 0.8
+
+    aimL = Drawing.new("Line")
+    aimL.Thickness = 1.5; aimL.Visible = false
+
+    aimD = Drawing.new("Circle")
+    aimD.Filled = true; aimD.Radius = 4
+    aimD.NumSides = 12; aimD.Visible = false
+end)
+
+-- ============================================
+--    ESP POOL
+-- ============================================
+
+local EP = {}
+
+local function mkE(p)
+    if p == lp or EP[p] then return end
+    local e = {}
+    pcall(function()
+        e.box = Drawing.new("Square")
+        e.box.Thickness = 1.5; e.box.Filled = false; e.box.Visible = false
+
+        e.trc = Drawing.new("Line")
+        e.trc.Thickness = 1.5; e.trc.Visible = false
+
+        e.hpBG = Drawing.new("Line")
+        e.hpBG.Thickness = 5; e.hpBG.Color = Color3.new(0,0,0); e.hpBG.Visible = false
+
+        e.hpB = Drawing.new("Line")
+        e.hpB.Thickness = 3; e.hpB.Visible = false
+
+        e.info = Drawing.new("Text")
+        e.info.Size = 13; e.info.Center = true
+        e.info.Outline = true; e.info.Visible = false
+
+        e.lk = Drawing.new("Line")
+        e.lk.Thickness = 2; e.lk.Visible = false
+
+        e.b3 = {}
+        for i = 1, 12 do
+            e.b3[i] = Drawing.new("Line")
+            e.b3[i].Thickness = 1; e.b3[i].Visible = false
+        end
+
+        e._hid = true
+        e._sx = -999; e._sy = -999; e._sh = -999
+        e._ltxt = ""
+        e._bv = false; e._tv = false; e._hv = false
+        e._iv = false; e._lv = false; e._3v = false
+    end)
+    EP[p] = e
+end
+
+local function rmE(p)
+    local e = EP[p]
+    if not e then return end
+    pcall(function()
+        e.box:Remove(); e.trc:Remove()
+        e.hpBG:Remove(); e.hpB:Remove()
+        e.info:Remove(); e.lk:Remove()
+        for i = 1, 12 do e.b3[i]:Remove() end
+    end)
+    EP[p] = nil
+end
+
+local function hideE(e)
+    if e._hid then return end
+    e._hid = true; e._sx = -999; e._sy = -999; e._sh = -999
+    if e._bv then e._bv = false; e.box.Visible = false end
+    if e._tv then e._tv = false; e.trc.Visible = false end
+    if e._hv then e._hv = false; e.hpBG.Visible = false; e.hpB.Visible = false end
+    if e._iv then e._iv = false; e.info.Visible = false end
+    if e._lv then e._lv = false; e.lk.Visible = false end
+    if e._3v then e._3v = false; for i = 1, 12 do e.b3[i].Visible = false end end
+end
+
+local function hideAllE()
+    for _, e in pairs(EP) do hideE(e) end
+end
+
+for _, p in pairs(PS:GetPlayers()) do mkE(p) end
+
+PS.PlayerAdded:Connect(function(p) mkE(p); initP(p) end)
+PS.PlayerRemoving:Connect(function(p)
+    rmE(p); rayR[p] = nil
+    local d = CC[p]
+    if d and d.cn then for _, c in pairs(d.cn) do c:Disconnect() end end
+    CC[p] = nil
+end)
+
+-- ============================================
+--    AIMBOT TARGET
+-- ============================================
+
+local aimTgt = nil
+local aimFrm = 0
+local AIM_RATE = 2
+
+local function findTarget()
+    local best = nil
+    local bestDSq = cfg.FOV * cfg.FOV
+    local w = cam.WorldToViewportPoint
+
+    for p, d in pairs(CC) do
+        if d.alive and d._valid and d.hrp and d.hrp.Parent and isE(d, cfg.AimTeam) then
+            local pt = (cfg.AimPart == "Head") and d.head or d.hrp
+            if pt and pt.Parent then
+                local pos = pt.Position
+                if cfg.Pred > 0 and d.hrp then
+                    local vel = d.hrp.AssemblyLinearVelocity
+                    pos = V3(pos.X + vel.X * cfg.Pred, pos.Y + vel.Y * cfg.Pred, pos.Z + vel.Z * cfg.Pred)
+                end
+                local sp, on = w(cam, pos)
+                if on then
+                    local ddx = sp.X - mx
+                    local ddy = sp.Y - my
+                    local dq = ddx * ddx + ddy * ddy
+                    if dq < bestDSq then
+                        if not cfg.WC or rayR[p] ~= false then
+                            bestDSq = dq; best = pos
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+-- triggerbot target check (is anyone in FOV?)
+local function hasFOVTarget()
+    local fovSq = cfg.FOV * cfg.FOV
+    for p, d in pairs(CC) do
+        if d.alive and d._valid and d.hrp and d.hrp.Parent and isE(d, cfg.AimTeam) then
+            local pt = (cfg.AimPart == "Head") and d.head or d.hrp
+            if pt and pt.Parent then
+                local sp, on = cam:WorldToViewportPoint(pt.Position)
+                if on then
+                    local ddx = sp.X - mx
+                    local ddy = sp.Y - my
+                    if ddx * ddx + ddy * ddy < fovSq then
+                        if not cfg.WC or rayR[p] ~= false then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- ============================================
+--    MENU
+-- ============================================
+
+local Window = Library:CreateWindow({
+    Title = "Aimbot + ESP v6.8",
+    Center = true, AutoShow = true,
+    TabPadding = 8, MenuFadeTime = 0.2
+})
+
+local Tabs = {
+    Aim    = Window:AddTab("Aimbot"),
+    ESP    = Window:AddTab("ESP"),
+    Colors = Window:AddTab("Colors"),
+    Cfg    = Window:AddTab("Settings")
+}
+
+-- ====== AIMBOT TAB ======
+local AL = Tabs.Aim:AddLeftGroupbox("Main")
+
+AL:AddToggle("AimOn", {
+    Text = "Enable Aimbot", Default = false,
+    Callback = function(v)
+        cfg.AimOn = v
+        if not v then
+            aimTgt = nil; actToggled = false; actDown = false
+            wasDown = false; sleepUntil = 0; prevRaw = false
+            if fovC then fovC.Visible = false end
+            if aimL then aimL.Visible = false end
+            if aimD then aimD.Visible = false end
+        end
+    end
+}):AddKeyPicker("AimKey", {
+    Default = "X", SyncToggleState = true,
+    Mode = "Toggle", Text = "On/Off"
+})
+
+AL:AddDivider()
+
+AL:AddDropdown("AimMode", {
+    Values = {"Hold", "Toggle"}, Default = 1,
+    Text = "Activation Mode",
+    Callback = function(v)
+        aimMode = v; actToggled = false; actDown = false
+        wasDown = false; sleepUntil = 0; prevRaw = false
+    end
+})
+
+AL:AddDropdown("ActKeyDrop", {
+    Values = keyNames, Default = 2,
+    Text = "Activation Key",
+    Callback = function(v)
+        actInfo = KD[v]; actDown = false; actToggled = false
+        wasDown = false; sleepUntil = 0; prevRaw = false
+    end
+})
+
+AL:AddToggle("UseActKey", {
+    Text = "Use Activation Key", Default = true,
+    Callback = function(v)
+        cfg.UseActKey = v; actToggled = false
+        actDown = false; wasDown = false
+    end
+})
+
+AL:AddSlider("Sleep", {
+    Text = "Sleep (ms)", Default = 0,
+    Min = 0, Max = 2000, Rounding = 0,
+    Callback = function(v) cfg.Sleep = v end
+})
+
+AL:AddDivider()
+
+AL:AddDropdown("AimPart", {
+    Values = {"Head","HumanoidRootPart","UpperTorso","LowerTorso"},
+    Default = 1, Text = "Aim Part",
+    Callback = function(v) cfg.AimPart = v end
+})
+
+AL:AddSlider("FOV", {
+    Text = "FOV", Default = 250,
+    Min = 30, Max = 800, Rounding = 0,
+    Callback = function(v) cfg.FOV = v end
+})
+
+AL:AddSlider("Smooth", {
+    Text = "Smoothness", Default = 4,
+    Min = 1, Max = 20, Rounding = 1,
+    Callback = function(v) cfg.Smooth = v end
+})
+
+local ARR = Tabs.Aim:AddRightGroupbox("Filters & Visuals")
+
+ARR:AddSlider("Pred", {
+    Text = "Prediction", Default = 0,
+    Min = 0, Max = 30, Rounding = 0,
+    Callback = function(v) cfg.Pred = v / 100 end
+})
+
+ARR:AddToggle("AimTeam", {
+    Text = "Skip Teammates", Default = false,
+    Callback = function(v) cfg.AimTeam = v end
+})
+
+ARR:AddToggle("WC", {
+    Text = "Wall Check", Default = true,
+    Callback = function(v) cfg.WC = v end
+})
+
+ARR:AddDivider()
+
+ARR:AddToggle("ShowFOV", {
+    Text = "FOV Circle", Default = true,
+    Callback = function(v) cfg.ShowFOV = v end
+})
+
+ARR:AddToggle("FOVFill", {
+    Text = "Fill FOV", Default = false,
+    Callback = function(v) cfg.FOVFill = v end
+})
+
+ARR:AddToggle("ShowAL", {
+    Text = "Aim Line", Default = true,
+    Callback = function(v) cfg.ShowAL = v end
+})
+
+ARR:AddDivider()
+
+ARR:AddToggle("WallShot", {
+    Text = "Wall Shot", Default = false,
+    Tooltip = "Bullets pass through walls",
+    Callback = function(v)
+        cfg.WallShot = v
+        if v then wsEnable() else wsDisable() end
+    end
+})
+
+-- ====== TRIGGERBOT ======
+local TB = Tabs.Aim:AddRightGroupbox("Triggerbot")
+
+TB:AddToggle("TBot", {
+    Text = "Enable Triggerbot", Default = false,
+    Tooltip = "Auto-shoots when enemy is in FOV",
+    Callback = function(v) cfg.TBot = v end
+})
+
+TB:AddSlider("TBotDelay", {
+    Text = "Fire Delay (ms)", Default = 100,
+    Min = 0, Max = 1000, Rounding = 0,
+    Tooltip = "Delay between shots",
+    Callback = function(v) cfg.TBotDelay = v end
+})
+
+TB:AddSlider("TBotBurst", {
+    Text = "Burst Count", Default = 1,
+    Min = 1, Max = 5, Rounding = 0,
+    Tooltip = "Clicks per trigger",
+    Callback = function(v) cfg.TBotBurst = v end
+})
+
+TB:AddSlider("TBotHoldTime", {
+    Text = "Hold Time (ms)", Default = 50,
+    Min = 10, Max = 200, Rounding = 0,
+    Tooltip = "How long mouse1 is held per click",
+    Callback = function(v) cfg.TBotHoldTime = v end
+})
+
+-- ====== ESP TAB ======
+local EL = Tabs.ESP:AddLeftGroupbox("Elements")
+
+EL:AddToggle("ESPOn", {
+    Text = "Enable ESP", Default = false,
+    Callback = function(v)
+        cfg.ESPOn = v; dirty = true; rf()
+        if not v then hideAllE() end
+    end
+}):AddKeyPicker("ESPKey", {
+    Default = "Z", SyncToggleState = true,
+    Mode = "Toggle", Text = "ESP"
+})
+
+EL:AddDivider()
+
+EL:AddToggle("Box", {
+    Text = "2D Boxes", Default = false,
+    Callback = function(v) cfg.Box = v; dirty = true; rf() end
+})
+
+EL:AddToggle("B3D", {
+    Text = "3D Boxes", Default = false,
+    Callback = function(v) cfg.B3D = v; dirty = true; rf() end
+})
+
+EL:AddToggle("Trc", {
+    Text = "Tracers", Default = false,
+    Callback = function(v) cfg.Trc = v; dirty = true; rf() end
+})
+
+EL:AddDropdown("TrcFrom", {
+    Values = {"Bottom","Center","Top","Mouse"},
+    Default = 1, Text = "Tracer Origin",
+    Callback = function(v) cfg.TrcFrom = v end
+})
+
+EL:AddToggle("HP", {
+    Text = "Health Bar", Default = false,
+    Callback = function(v) cfg.HP = v; dirty = true; rf() end
+})
+
+local ER = Tabs.ESP:AddRightGroupbox("Info")
+
+ER:AddToggle("Name", {
+    Text = "Player Name", Default = false,
+    Callback = function(v) cfg.Name = v; dirty = true; rf() end
+})
+
+ER:AddToggle("Dist", {
+    Text = "Distance", Default = false,
+    Callback = function(v) cfg.Dist = v; dirty = true; rf() end
+})
+
+ER:AddToggle("Look", {
+    Text = "Look Direction", Default = false,
+    Callback = function(v) cfg.Look = v; dirty = true; rf() end
+})
+
+ER:AddDivider()
+
+ER:AddSlider("MaxDist", {
+    Text = "Max Distance", Default = 1000,
+    Min = 50, Max = 5000, Rounding = 0,
+    Callback = function(v) cfg.MaxDist = v end
+})
+
+ER:AddToggle("ESPTeam", {
+    Text = "Skip Teammates", Default = false,
+    Callback = function(v) cfg.ESPTeam = v; dirty = true end
+})
+
+-- ====== COLORS TAB ======
+local CL = Tabs.Colors:AddLeftGroupbox("Aimbot")
+CL:AddLabel("FOV"):AddColorPicker("CFov", {Default = Color3.fromRGB(255,255,255), Title = "FOV", Callback = function(v) cfg.FOVCol = v end})
+CL:AddLabel("Aim Line"):AddColorPicker("CAim", {Default = Color3.fromRGB(255,0,0), Title = "Aim", Callback = function(v) cfg.AimCol = v end})
+
+local CRR = Tabs.Colors:AddRightGroupbox("ESP")
+CRR:AddLabel("2D Box"):AddColorPicker("CBox", {Default = Color3.fromRGB(255,255,255), Title = "Box", Callback = function(v) cfg.BoxCol = v; dirty = true end})
+CRR:AddLabel("3D Box"):AddColorPicker("C3D", {Default = Color3.fromRGB(0,255,255), Title = "3D", Callback = function(v) cfg.B3DCol = v; dirty = true end})
+CRR:AddLabel("Tracers"):AddColorPicker("CTrc", {Default = Color3.fromRGB(255,255,255), Title = "Trc", Callback = function(v) cfg.TrcCol = v; dirty = true end})
+CRR:AddLabel("Name/Dist"):AddColorPicker("CInf", {Default = Color3.fromRGB(255,255,255), Title = "Info", Callback = function(v) cfg.InfoCol = v; dirty = true end})
+CRR:AddLabel("Look"):AddColorPicker("CLk", {Default = Color3.fromRGB(255,255,0), Title = "Look", Callback = function(v) cfg.LookCol = v; dirty = true end})
+
+-- ====== SETTINGS TAB ======
+local SL = Tabs.Cfg:AddLeftGroupbox("Controls")
+SL:AddLabel("Right Shift = hide menu")
+SL:AddLabel("[X] aimbot | [Z] ESP")
+SL:AddDivider()
+SL:AddLabel("Wall Shot: bullets go")
+SL:AddLabel("  through walls (CanQuery)")
+SL:AddLabel("Triggerbot: auto-click")
+SL:AddLabel("  when enemy in FOV")
+SL:AddDivider()
+
+SL:AddButton({
+    Text = "Destroy", DoubleClick = true,
+    Func = function()
+        cfg.AimOn = false; cfg.ESPOn = false; cfg.TBot = false
+        wsDisable()
+        for p in pairs(EP) do rmE(p) end
+        pcall(function() fovC:Remove(); aimL:Remove(); aimD:Remove() end)
+        for _, d in pairs(CC) do
+            if d.cn then for _, c in pairs(d.cn) do c:Disconnect() end end
+        end
+        Library:Unload()
+    end
+})
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+ThemeManager:SetFolder("AimbotESPv68")
+SaveManager:SetFolder("AimbotESPv68/configs")
+ThemeManager:ApplyToTab(Tabs.Cfg)
+SaveManager:BuildConfigSection(Tabs.Cfg)
+
+-- ============================================
+--    RENDER LOOP
+-- ============================================
+
+local w2vp
+local accumX = 0
+local accumY = 0
+
+-- triggerbot runs every 3 frames to save FPS
+local tbFrame = 0
+local TB_RATE = 3
+
+RS.RenderStepped:Connect(function()
+    cam = workspace.CurrentCamera
+    w2vp = cam.WorldToViewportPoint
+    mx = mse.X; my = mse.Y + giY
+
+    local rawAim = false
+    if cfg.AimOn then
+        if not cfg.UseActKey then
+            rawAim = true
+        elseif actInfo == nil then
+            rawAim = true
+        else
+            if aimMode == "Hold" then
+                rawAim = actDown
+            else
+                if actDown and not wasDown then actToggled = not actToggled end
+                wasDown = actDown; rawAim = actToggled
+            end
+        end
+    end
+
+    if prevRaw and not rawAim and cfg.Sleep > 0 then
+        sleepUntil = tick() + cfg.Sleep / 1000
+    end
+    prevRaw = rawAim
+    local shouldAim = rawAim or (not rawAim and tick() < sleepUntil)
+
+    -- ═══ AIMBOT ═══
+    if cfg.AimOn then
+        if cfg.ShowFOV and fovC then
+            fovC.Position = V2(mx, my)
+            fovC.Radius = cfg.FOV
+            fovC.Color = cfg.FOVCol
+            fovC.Filled = cfg.FOVFill
+            fovC.Visible = true
+        elseif fovC then
+            fovC.Visible = false
+        end
+
+        if shouldAim then
+            aimFrm = aimFrm + 1
+            if aimFrm >= AIM_RATE then
+                aimFrm = 0
+                aimTgt = findTarget()
+            end
+
+            if aimTgt then
+                local sp = w2vp(cam, aimTgt)
+                local tx, ty = sp.X, sp.Y
+
+                accumX = accumX + (tx - mx) / cfg.Smooth
+                accumY = accumY + (ty - my) / cfg.Smooth
+
+                local moveX = 0
+                local moveY = 0
+
+                if accumX >= 1 then
+                    moveX = floor(accumX)
+                    accumX = accumX - moveX
+                elseif accumX <= -1 then
+                    moveX = -floor(-accumX)
+                    accumX = accumX - moveX
+                end
+
+                if accumY >= 1 then
+                    moveY = floor(accumY)
+                    accumY = accumY - moveY
+                elseif accumY <= -1 then
+                    moveY = -floor(-accumY)
+                    accumY = accumY - moveY
+                end
+
+                if moveX ~= 0 or moveY ~= 0 then
+                    mousemoverel(moveX, moveY)
+                end
+
+                if cfg.ShowAL and aimL and aimD then
+                    aimL.From = V2(mx, my); aimL.To = V2(tx, ty)
+                    aimL.Color = cfg.AimCol; aimL.Visible = true
+                    aimD.Position = V2(tx, ty); aimD.Color = cfg.AimCol; aimD.Visible = true
+                else
+                    if aimL then aimL.Visible = false end
+                    if aimD then aimD.Visible = false end
+                end
+            else
+                accumX = 0; accumY = 0
+                if aimL then aimL.Visible = false end
+                if aimD then aimD.Visible = false end
+            end
+        else
+            aimTgt = nil; aimFrm = 0
+            accumX = 0; accumY = 0
+            if aimL then aimL.Visible = false end
+            if aimD then aimD.Visible = false end
+        end
+    end
+
+    -- ═══ TRIGGERBOT ═══
+    if cfg.TBot then
+        tbFrame = tbFrame + 1
+        if tbFrame >= TB_RATE then
+            tbFrame = 0
+            tbHasTarget = hasFOVTarget()
+            if tbHasTarget then
+                tbShoot()
+            end
+        end
+    end
+
+    -- ═══ ESP ═══
+    if not cfg.ESPOn or not anyFeat then
+        dirty = false
+        return
+    end
+
+    local focal = vsHY / tan(rad(cam.FieldOfView) * 0.5)
+    local camP = cam.CFrame.Position
+    local cpx, cpy, cpz = camP.X, camP.Y, camP.Z
+    local maxDSq = cfg.MaxDist * cfg.MaxDist
+    local doBox  = cfg.Box
+    local do3D   = cfg.B3D
+    local doTrc  = cfg.Trc
+    local doHP   = cfg.HP
+    local doName = cfg.Name
+    local doDist = cfg.Dist
+    local doLook = cfg.Look
+    local isDirty = dirty
+
+    local tfx, tfy
+    if doTrc then
+        local o = cfg.TrcFrom
+        if o == "Bottom" then     tfx = vsHX; tfy = vsY
+        elseif o == "Center" then tfx = vsHX; tfy = vsHY
+        elseif o == "Top" then    tfx = vsHX; tfy = 0
+        else                      tfx = mx;   tfy = my end
+    end
+
+    for player, e in pairs(EP) do
+        local d = CC[player]
+
+        if not d or not d.alive or not d._valid
+            or not d.hrp or not d.hrp.Parent
+            or not d.hum or not isE(d, cfg.ESPTeam) then
+            hideE(e)
+        else
+            local hrp = d.hrp
+            local pos = hrp.Position
+            local ddx = pos.X - cpx
+            local ddy = pos.Y - cpy
+            local ddz = pos.Z - cpz
+            local dSq = ddx * ddx + ddy * ddy + ddz * ddz
+
+            if dSq > maxDSq then
+                hideE(e)
+            else
+                local sp, on = w2vp(cam, pos)
+
+                if not on then
+                    hideE(e)
+                else
+                    local sx = floor(sp.X)
+                    local sy = floor(sp.Y)
+                    local pps = focal / sp.Z
+                    local sh = floor(5.8 * pps)
+                    local moved = (sx ~= e._sx) or (sy ~= e._sy) or (sh ~= e._sh)
+
+                    if not moved and not isDirty and not e._hid then
+                        -- skip
+                    else
+                        e._sx = sx; e._sy = sy; e._sh = sh; e._hid = false
+
+                        local topY = sy - floor(3.0 * pps)
+                        local botY = sy + floor(2.8 * pps)
+                        local h = botY - topY
+                        if h < 4 then h = 4 end
+                        local w = floor(h * 0.5)
+                        local bx = sx - floor(w * 0.5)
+
+                        if doBox then
+                            e.box.Position = V2(bx, topY)
+                            e.box.Size = V2(w, h)
+                            if isDirty or not e._bv then e.box.Color = cfg.BoxCol end
+                            if not e._bv then e._bv = true; e.box.Visible = true end
+                        else
+                            if e._bv then e._bv = false; e.box.Visible = false end
+                        end
+
+                        if doTrc then
+                            local fx, fy = tfx, tfy
+                            if cfg.TrcFrom == "Mouse" then fx = mx; fy = my end
+                            e.trc.From = V2(fx, fy)
+                            e.trc.To = V2(sx, botY)
+                            if isDirty or not e._tv then e.trc.Color = cfg.TrcCol end
+                            if not e._tv then e._tv = true; e.trc.Visible = true end
+                        else
+                            if e._tv then e._tv = false; e.trc.Visible = false end
+                        end
+
+                        if doHP then
+                            local hv = d.hum.Health
+                            local mhp = d.hum.MaxHealth
+                            local r = clamp(hv / mhp, 0, 1)
+                            local hx = bx - 6
+                            local col = hpC(r)
+
+                            e.hpBG.From = V2(hx, topY)
+                            e.hpBG.To = V2(hx, botY)
+                            e.hpB.From = V2(hx, botY)
+                            e.hpB.To = V2(hx, botY - floor(h * r))
+                            e.hpB.Color = col
+
+                            if not e._hv then
+                                e._hv = true
+                                e.hpBG.Visible = true
+                                e.hpB.Visible = true
+                            end
+                        else
+                            if e._hv then
+                                e._hv = false
+                                e.hpBG.Visible = false
+                                e.hpB.Visible = false
+                            end
+                        end
+
+                        if doName or doDist then
+                            local txt = ""
+                            if doName then txt = d.nm end
+                            if doDist then
+                                local dI = floor(dSq ^ 0.5)
+                                if txt ~= "" then
+                                    txt = txt .. " [" .. dI .. "m]"
+                                else
+                                    txt = dI .. "m"
+                                end
+                            end
+                            if e._ltxt ~= txt then e._ltxt = txt; e.info.Text = txt end
+                            e.info.Position = V2(sx, topY - 16)
+                            if isDirty or not e._iv then e.info.Color = cfg.InfoCol end
+                            if not e._iv then e._iv = true; e.info.Visible = true end
+                        else
+                            if e._iv then e._iv = false; e.info.Visible = false end
+                        end
+
+                        if doLook and d.head and d.head.Parent then
+                            local headP = d.head.Position
+                            local le = headP + d.head.CFrame.LookVector * 10
+                            local hs = w2vp(cam, headP)
+                            local ls = w2vp(cam, le)
+                            e.lk.From = V2(floor(hs.X), floor(hs.Y))
+                            e.lk.To = V2(floor(ls.X), floor(ls.Y))
+                            if isDirty or not e._lv then e.lk.Color = cfg.LookCol end
+                            if not e._lv then e._lv = true; e.lk.Visible = true end
+                        else
+                            if e._lv then e._lv = false; e.lk.Visible = false end
+                        end
+
+                        if do3D then
+                            local cf = hrp.CFrame
+                            local allOn = true
+                            for i = 1, 8 do
+                                local s, onn = w2vp(cam, (cf * b3off[i]).Position)
+                                if not onn then allOn = false; break end
+                                scX[i] = floor(s.X); scY[i] = floor(s.Y)
+                            end
+                            if allOn then
+                                local c3 = cfg.B3DCol
+                                for i = 1, 12 do
+                                    local a, b = b3e[i][1], b3e[i][2]
+                                    e.b3[i].From = V2(scX[a], scY[a])
+                                    e.b3[i].To = V2(scX[b], scY[b])
+                                    if isDirty or not e._3v then e.b3[i].Color = c3 end
+                                    e.b3[i].Visible = true
+                                end
+                                e._3v = true
+                            else
+                                if e._3v then
+                                    e._3v = false
+                                    for i = 1, 12 do e.b3[i].Visible = false end
+                                end
+                            end
+                        else
+                            if e._3v then
+                                e._3v = false
+                                for i = 1, 12 do e.b3[i].Visible = false end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    dirty = false
+end)
+
+-- ============================================
+--    MENU FPS FIX
+-- ============================================
+
+Library:Notify("v6.8 loaded!", 5)
+
+do
+    task.spawn(function()
+        task.wait(1)
+        local sg = nil
+        for _, g in pairs(CG:GetChildren()) do
+            if g:IsA("ScreenGui") and g:FindFirstChildWhichIsA("Frame")
+                and g.Name ~= "RobloxGui" and g.Name ~= "PlayerList" then
+                sg = g; break
+            end
+        end
+        if not sg then
+            local pg = lp:FindFirstChild("PlayerGui")
+            if pg then
+                for _, g in pairs(pg:GetChildren()) do
+                    if g:IsA("ScreenGui") and g:FindFirstChildWhichIsA("Frame") then
+                        sg = g; break
+                    end
+                end
+            end
+        end
+        if not sg then return end
+        local wasT = Library.Toggled
+        RS.Heartbeat:Connect(function()
+            local t = Library.Toggled
+            if t ~= wasT then wasT = t; sg.Enabled = t end
+        end)
+    end)
+end
